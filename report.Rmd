@@ -1,0 +1,81 @@
+---
+title: "Mathematics in Machine Learning"
+author: "Vittorio Zampinetti"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+    number_sections: false
+    theme: lumen
+    df_print: paged
+  pdf_document:
+    toc: true
+  html_notebook:
+    toc: true
+---
+
+# Introduction
+
+# Dev Environment
+
+```{r}
+library(tidyverse)
+```
+
+# Dataset
+
+```{r}
+fires <- read_csv("data/forestfires.csv", col_types = cols(
+  X = col_number(),
+  Y = col_number(),
+  month = col_factor(levels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")),
+  day = col_factor(levels = c("mon", "tue", "wed", "thu", "fri", "sat", "sun")),
+  FFMC = col_double(),
+  DMC = col_double(),
+  DC = col_double(),
+  ISI = col_double(),
+  temp = col_double(),
+  RH = col_double(),
+  wind = col_double(),
+  rain = col_double(),
+  area = col_double()
+))
+
+fires
+```
+
+## Attributes
+
+## Exploratory Data Analysis (EDA)
+
+```{r}
+fires <- fires %>%
+  mutate(log_area = log(area + 1))
+
+fires %>%
+  ggplot() +
+  geom_histogram(aes(area), binwidth = 10) +
+  coord_cartesian(xlim = c(0, 300))
+
+fires %>%
+  ggplot() +
+  geom_histogram(aes(log_area), binwidth = 0.5)
+```
+
+# Regression Models
+
+## Linear Regression
+
+### Metrics
+The term mean squared error is sometimes used to refer to the unbiased estimate of error variance: the residual sum of squares divided by the number of degrees of freedom. This definition for a known, computed quantity differs from the above definition for the computed MSE of a predictor in that a different denominator is used. The denominator is the sample size reduced by the number of model parameters estimated from the same data, (n-p) for p regressors or (n-p-1) if an intercept is used.[4] For more details, see errors and residuals in statistics. Although the MSE (as defined in the present article) is not an unbiased estimator of the error variance, it is consistent, given the consistency of the predictor.
+
+## Random Forest
+
+## Support Vector Machine
+
+# Conclusion
+Many ways to improve the accuracy of the model, but focus on feature selection and links between predictors and response.
+
+# References
