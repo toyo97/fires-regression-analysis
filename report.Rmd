@@ -14,9 +14,15 @@ output:
     toc: true
   html_notebook:
     toc: true
+bibliography: bibliography.bibtex
+link-citations: true
 ---
 
 # Introduction
+Many real-world problems require estimation of the relationship between a dependent variable (often called _response_) and one or more independent variables (often called _predictors_). This task is known as _regression analysis_. In this work we apply this statistical processing, focusing in particular on _general linear models_, to estimate the extent of forest fires according to a set of attributes like weather conditions, time period, location etc. Fast detection is a key element for successful firefighting and the aim of this analysis is not only to accurately predict the spread area of a forest fire, but also to understand which predictors are decisive for this purpose, in order to keep the cost of sensors low while being able to readily react and prevent large environmental disaster.
+
+Here a summary of the topics touched by this document.
+After briefly introducing the [software environment](#dev_environment) in which the whole project has been developed, we describe the [dataset](#dataset) attributes and main characteristics.
 
 # Dev Environment
 
