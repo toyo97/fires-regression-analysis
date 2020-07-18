@@ -3,7 +3,7 @@ library(gridExtra)
 
 fires.raw <- read_csv("data/forestfires.csv", col_types = cols(
   X = col_factor(levels = 1:9),
-  Y = col_factor(levels = 1:9),
+  Y = col_factor(levels = 2:9),
   month = col_factor(levels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")),
   day = col_factor(levels = c("mon", "tue", "wed", "thu", "fri", "sat", "sun")),
   FFMC = col_double(),
@@ -18,7 +18,7 @@ fires.raw <- read_csv("data/forestfires.csv", col_types = cols(
 ))
 
 fires <- fires.raw %>%
-  mutate(X = factor(paste(X,Y, sep = ""), levels = levels(X))) %>%
+  mutate(X = factor(paste(X,Y, sep = ""))) %>%
   rename(xy = X) %>%
   select(-c(Y))
 
@@ -89,38 +89,27 @@ complete.predicted[complete.predicted < 0] <- 0.
 paste("RMSE:", round(rmse(complete.predicted, fires$area), digits = 2))
 paste("MAD:", round(mad(complete.predicted, fires$area), digits = 2))
 
-# Then we perform feature selection
-# STFWI: spatial, temporal and the four FWI components (Fire Weather Index)
-stfwi.cols <- c("X", "Y", "month", "day", "FFMC", "DMC", "DC", "ISI")
-# STM: spatial, temporal and weather components
-stm.cols <- c("X", "Y", "month", "day", "temp", "RH", "wind", "rain")
-# FWI: only the four FWI components
-fwi.cols <- c("FFMC", "DMC", "DC", "ISI")
-# M: only the four weather conditions
-m.cols <- c("temp", "RH", "wind", "rain")
+anova(naive.lm, complete.lm)
+# naive model is not enough
 
-stfwi.lm <- lm(log(area + 1) ~ xy + month + day + FFMC + DMC + DC + ISI, fires)
-summary(stfwi.lm)
-stfwi.predicted <- exp(predict(stfwi.lm, fires, type = "response")) - 1
-stfwi.predicted[stfwi.predicted < 0] <- 0.
-paste("RMSE:", round(rmse(stfwi.predicted, fires$area), digits = 2))
-paste("MAD:", round(mad(stfwi.predicted, fires$area), digits = 2))
-
-stm.lm <- lm(log(area +1) ~ xy + month + day + temp + RH + wind + rain, fires)
+stm.lm <- lm(log(area + 1) ~ xy + month + day + temp + RH + wind + rain, fires)
 summary(stm.lm)
 stm.predicted <- exp(predict(stm.lm, fires, type = "response")) - 1
 stm.predicted[stm.predicted < 0] <- 0.
 paste("RMSE:", round(rmse(stm.predicted, fires$area), digits = 2))
 paste("MAD:", round(mad(stm.predicted, fires$area), digits = 2))
 
-fwi.lm <- lm(log(area +1) ~ FFMC + DMC + DC + ISI, fires)
+anova(stm.lm, complete.lm)
+# therefore we can start looking for smaller subsets of predictors
+
+fwi.lm <- lm(log(area + 1) ~ FFMC + DMC + DC + ISI, fires)
 summary(fwi.lm)
 fwi.predicted <- exp(predict(fwi.lm, fires, type = "response")) - 1
 fwi.predicted[fwi.predicted < 0] <- 0.
 paste("RMSE:", round(rmse(fwi.predicted, fires$area), digits = 2))
 paste("MAD:", round(mad(fwi.predicted, fires$area), digits = 2))
 
-m.lm <- lm(log(area +1) ~ temp + RH + wind + rain, fires)
+m.lm <- lm(log(area + 1) ~ temp + RH + wind + rain, fires)
 summary(m.lm)
 m.predicted <- exp(predict(m.lm, fires, type = "response")) - 1
 m.predicted[m.predicted < 0] <- 0.
@@ -215,7 +204,6 @@ ggplot() +
   labs(title = "REC curve", x = "Absolute error", y = "Tolerance (%)") +
   theme(plot.title = element_text(hjust = 0.5))
 
-# TODO: add regularization
 # TODO: add bootstrap for parameter confidence intervals
 
 # fires_bin.test.result <- fires_bin.test %>%
