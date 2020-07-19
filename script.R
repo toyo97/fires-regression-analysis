@@ -34,15 +34,19 @@ parea_log <- ggplot(data = fires) +
 
 grid.arrange(parea, parea_log, ncol = 2)
 
+img.file <- system.file(file.path("data/map.png"))
+img <- readPNG("data/map.png")
+
 fires.raw %>%
   ggplot(aes(X, y = reorder(Y, desc(Y)))) +
+  background_image(img) +
   geom_jitter(aes(color = log(area+1))) +
+  geom_tile(color = "grey", alpha = 0) +
   scale_x_discrete(position = "top") +
   scale_y_discrete(limits = factor(9:1)) +
   coord_cartesian(ylim = c(1,9)) +
   scale_color_gradient(low = "blue", high = "red") +
   ylab("Y")
-
 # METRICS
 # library(mltools)
 # mltools::rmse(naive.predicted, fires$area)
@@ -59,10 +63,7 @@ rmse <- function(predicted, actual) {
   return(rmse)
 }
 
-mad <- function(predicted, actual) {
-  mad <- mean(abs(actual - predicted))
-  return(mad)
-}
+
 
 # First fit the naive or null linear model
 naive.lm <- lm(log(area + 1) ~ 1, fires)
@@ -74,8 +75,6 @@ near(naive.lm$coefficients[[1]], mean(log(1 + fires$area)))
 # we compute rmse and mad but avoiding errors in conversion between log and linear space
 # i.e. instead of using the inverse of log(x+1) ...
 naive.predicted <- exp(predict(naive.lm, fires, type = "response")) - 1
-# ... we compute the prediction starting from the mean values
-naive.predicted <- rep(mean(fires$area), nrow(fires))
 
 paste("RMSE:", round(rmse(naive.predicted, fires$area), digits = 2))
 paste("MAD:", round(mad(naive.predicted, fires$area), digits = 2))
@@ -91,6 +90,9 @@ paste("MAD:", round(mad(complete.predicted, fires$area), digits = 2))
 
 anova(naive.lm, complete.lm)
 # naive model is not enough
+
+fires.raw %>%
+  filter(X == 9, Y == 4)
 
 stm.lm <- lm(log(area + 1) ~ xy + month + day + temp + RH + wind + rain, fires)
 summary(stm.lm)
