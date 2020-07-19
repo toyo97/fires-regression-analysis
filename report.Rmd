@@ -10,6 +10,7 @@ output:
     number_sections: false
     theme: lumen
     df_print: paged
+    code_folding: hide
   pdf_document:
     toc: true
   html_notebook:
@@ -19,23 +20,65 @@ link-citations: true
 ---
 
 # Introduction
-Many real-world problems require estimation of the relationship between a dependent variable (often called _response_) and one or more independent variables (often called _predictors_). This task is known as _regression analysis_. In this work we apply this statistical processing, focusing in particular on _general linear models_, to estimate the extent of forest fires according to a set of attributes like weather conditions, time period, location etc. Fast detection is a key element for successful firefighting and the aim of this analysis is not only to accurately predict the spread area of a forest fire, but also to understand which predictors are decisive for this purpose, in order to keep the cost of sensors low while being able to readily react and prevent large environmental disaster.
+Many real-world problems require estimation of the relationship between a dependent variable (often called _response_) and one or more independent explanatory variables (often called _predictors_). This task is known as _regression analysis_. In this work we apply this statistical processing, focusing in particular on _general linear models_, to estimate the extent of forest fires according to a set of attributes like weather conditions, time period, location etc. Fast detection is a key element for successful firefighting and the aim of this analysis is not only to accurately predict the spread area of a forest fire, but also to understand which predictors are decisive for this purpose, in order to keep the cost of sensors low while being able to readily react and prevent large environmental disasters.
 
 Here a summary of the topics touched by this document.
-After briefly introducing the [software environment](#dev_environment) in which the whole project has been developed, we describe the [dataset](#dataset) attributes and main characteristics.
+After briefly introducing the [software environment](#dev-environment) in which the whole project has been developed, we describe the [dataset](#dataset) attributes and main characteristics. Then we dive into the [linear regression](#linear-regression) analysis, defining the [metrics](#metrics) used for performance evaluation and [selecting the features](#feature-selection) to be include in the models. After that, a [peculiar approach for skewed data with many zeros](#two-part-model) is tested, given the unusual distribution of the response variable. This method, called the _"Two-part model"_, has been inspired by the research paper of @fletcher. Finally, after having analyzed the regression task under a probabilistic approach, we try to overcome the limitations of a linear model with the adoption of a decision-rule based regression algorithm, namely [Random Forest](#random-forest).
 
 # Dev Environment
 
+The project is fully developed in the **R** language, being it particularly suitable for probabilistic modelling and data science procedures. The entire code is embedded in an R Markdown notebook which is then knit into this document.
+
+The code follows the [tidyverse standards](https://style.tidyverse.org/) as much as possible, using [ggplot2](https://ggplot2.tidyverse.org/) library as the main engine for plots and figures. In the end, concerning the random forest test, the quite new machine learning library called [mlr3](https://mlr3.mlr-org.com/reference/mlr3-package.html) has been exploited.
 ```{r}
 library(tidyverse)
 ```
 
+
+```{r message=FALSE}
+library(gridExtra) # arrange plots in a grid
+
+# ml libs for random forest section
+library(mlr3)
+library(mlr3viz)
+library(mlr3learners)
+library(ranger) # random forest implementation
+```
+
+
 # Dataset
 
+The dataset has been created by @cortez and retrieved from the _UCI Machine Learning Repository_ -@uci at [this link](https://archive.ics.uci.edu/ml/datasets/Forest+Fires).
+It was collected from January 2000 to December 2003.
+It consists of $517$ records each of which is composed by $12$ predictors and a ground-truth outcome value, _i.e._ the area of the forest fire in hectares (_ha_).
+
+## Attributes
+
+The following is a brief description for each attribute:
+
+| Attribute | Description|
+|-|-|
+| **X** | x-axis spatial coordinate within the Montesinho park map: 1 to 9|
+| **Y** | y-axis spatial coordinate within the Montesinho park map: 2 to 9|
+| **month** | month of the year: 'jan' to 'dec'|
+| **day** | day of the week: 'mon' to 'sun'|
+| **FFMC** | FFMC index from the FWI system: 18.7 to 96.20|
+| **DMC** | DMC index from the FWI system: 1.1 to 291.3|
+| **DC** | DC index from the FWI system: 7.9 to 860.6|
+| **ISI** | ISI index from the FWI system: 0.0 to 56.10|
+| **temp** | temperature in Celsius degrees: 2.2 to 33.30|
+| **RH** | relative humidity in %: 15.0 to 100|
+| **wind** | wind speed in km/h: 0.40 to 9.40|
+| **rain** | outside rain in mm/m2 : 0.0 to 6.4|
+| **area** | the burned area of the forest (in ha): 0.00 to 1090.84|
+
+The four indices Fine Fuel Moisture Code (FFMC), Duff Moisture Code (DMC), Drought Code (DC) and Initial Spread Index (ISI) are specific measures for rating fire danger according to the Fire Weather Index (FWI) Canadian system. For more details about the meaning of these measures, please refer to the reference paper -@cortez.
+
 ```{r}
-fires <- read_csv("data/forestfires.csv", col_types = cols(
-  X = col_number(),
-  Y = col_number(),
+# read data
+fires.raw <- read_csv("data/forestfires.csv", col_types = cols(
+  X = col_factor(levels = 1:9),
+  Y = col_factor(levels = 2:9),
   month = col_factor(levels = c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")),
   day = col_factor(levels = c("mon", "tue", "wed", "thu", "fri", "sat", "sun")),
   FFMC = col_double(),
@@ -49,37 +92,196 @@ fires <- read_csv("data/forestfires.csv", col_types = cols(
   area = col_double()
 ))
 
+# merge X, Y in one single factor xy
+fires <- fires.raw %>%
+  mutate(X = factor(paste(X,Y, sep = ""))) %>%
+  rename(xy = X) %>%
+  select(-c(Y))
+
 fires
 ```
 
-## Attributes
-
 ## Exploratory Data Analysis (EDA)
 
+Apart from location (_X_ and _Y_), _month_ and _day_ attributes, which have been encoded as categorical predictors (or _factors_ in the R jargon), all the others are real-valued numbers. It is worth mentioning that the coordinates have been merged together as the key point is the zone in which the fire has spread and not the x or y coordinates. Here a map showing the distribution of the forest fires in _Montesinho Natural Park_, Portugal.
+
 ```{r}
-fires <- fires %>%
-  mutate(log_area = log(area + 1))
+library(png)
+library(ggpubr)
+img <- readPNG("data/map.png")
 
-fires %>%
-  ggplot() +
-  geom_histogram(aes(area), binwidth = 10) +
-  coord_cartesian(xlim = c(0, 300))
-
-fires %>%
-  ggplot() +
-  geom_histogram(aes(log_area), binwidth = 0.5)
+fires.raw %>%
+  ggplot(aes(X, y = reorder(Y, desc(Y)))) +
+  background_image(img) +
+  geom_jitter(aes(color = log(area+1))) +
+  geom_tile(color = "grey", alpha = 0) +
+  scale_x_discrete(position = "top") +
+  scale_y_discrete(limits = factor(9:1)) +
+  coord_cartesian(ylim = c(1,9)) +
+  scale_color_gradient(low = "blue", high = "red") +
+  ylab("Y")
 ```
+
+One important aspect of this dataset, is the distribution of the outcome variable: it appears to be highly positively skewed and therefore it is advisable, in order to perform linear regression, to log-transform the values.
+In the next plots we see that after applying $log(x+1)$ function, the response variable presents a more gaussian-shaped distribution.
+```{r}
+parea <- ggplot(data = fires) +
+  geom_histogram(aes(area), binwidth = 30) +
+  xlab("Area (ha)")
+  # coord_cartesian(ylim = c(0, 50))
+
+parea_log <- ggplot(data = fires) +
+  geom_histogram(aes(log(area + 1)), binwidth = 0.2) +
+  xlab("Log-area")
+  # coord_cartesian(xlim = c(0, 10))
+
+grid.arrange(parea, parea_log, ncol = 2)
+```
+
+Of course we can also notice that the occurrence of zero values is very high, constituting almost half of the entire dataset.
+
+```{r}
+fires %>%
+  mutate(area.gt0 = area > 0) %>% # greater than 0 binary variable
+  ggplot(aes(area.gt0)) +
+  geom_bar(aes(fill = area.gt0)) +
+  xlab("Area > 0")
+```
+
+This issue will be covered - and tackled - in one of the next sections, experimenting the _two-part model_ proposed by @fletcher. For the time being, we will consider the normal assumption as in -@cortez.
+
+<!-- The following matrix allows a quick overview of the features plotted one against the other in order to inspect on some evident correlation. -->
+<!-- ```{r} -->
+<!-- pairs(fires) -->
+<!-- ``` -->
 
 # Regression Models
 
 ## Linear Regression
+As the first and main regression model, we introduce the general linear model.
+
+Given a matrix of explanatory variables $X = (X_1, ..., X_n)'$ where $X_i$ represents the vector of predictors for the $i^th$ observation, we want to explain the probabilistic behavior of the quantitative responses $y_1, ..., y_n$, considered as realization of normal random variables $Y = Y_1, ..., Y_n$, in terms of $X$.
+
+More specifically, the goal is to find the coefficients of the following linear combination.
+
+$$Y = X\beta + \epsilon$$
+where $X$ is a matrix $n \times p$, with $p = \#predictors + 1$ since a column of $1$'s is commonly added to the matrix in order to concisely represent the intercept of the regression line. The $\beta = (\beta_0, ..., \beta_{p-1})'$ column vector is a set of parameters, usually unknown, main objective of the statistical inference, whereas the $\epsilon = (\epsilon_1, ..., \epsilon_n)'$ column vector is a set of unobservable random variables (errors) which account for natural variability, measurement error and other sources of uncertainty. In general, such vector is under the normal assumption, meaning that it is considered as drawn from a multivariate normal distribution, formally:
+
+$$\epsilon \sim \mathcal{N}_n(\pmb{0}, \sigma^2 I_{n \times n})$$
+which represents a situation of i.i.d. errors added to the signal $X\beta$.
+It then follows that also $Y$ is a normal random vector, with each element having the same variance (homoscedasticity).
+
+$$Y = X\beta + \epsilon \sim \mathcal{N}_n(X\beta, \sigma^2I_{n\times n})$$
+### Ordinary Least Square Estimates (OLS)
+One way to estimate the values of the $\beta$ coefficients, is to adopt the Ordinary Least Square (OLS) estimate. It is a closed-form solution to the following minimization problem:
+
+$$\min\limits_{\beta} ||y - \mu||^2$$
+This comes from the fact that we want to maximize the likelihood $\mathcal{L}(\theta|Y)$ which is, in our case, a function of $\beta$, i.e. 
+$$\mathcal{L}(\beta|Y) \propto exp(-\frac{1}{2\sigma^2}||Y - X\beta||^2) $$
+Therefore, assuming that $X'X$ is an invertible matrix, the formula for the OLS estimator is
+$$\hat{\beta} = (X'X)^{-1}X'Y$$
+It is immediate to notice that, since $\hat{\beta}$ is a linear transformation of $Y$, it is a normal random variable itself, of mean $\beta$ and var-cov matrix $\sigma^2(X'X)^{-1}$.
+
+In the following sections, having ascertained that the $y$ vector is the vector of the outcome variables (area), realizations of $Y$, we compute the OLS estimate selecting different subsets of variables as the $X$ matrix, evaluating the performances and then making inference on the validity of the model.
+
+### The null and complete models
+
+In the first place, it is reasonable to test the null model, just to have a benchmark for the performance of the models.
+This means that we consider the $X$ matrix as a single column vector of $1$'s.
+
+If we compute the least square estimate, we find:
+
+$$\hat{\beta_0} = (X'X)^{-1}X'Y = \frac{1}{n}\sum_{i=1}^{n}Y_i$$
+This is also known as _naive predictor_ since for each observation, the outcome will be the sample mean of the response variables, regardless of the values of the explanatory variables.
+
+Recall that in order to have a normal-like distribution of the area, we first have to log-transform it.
+
+```{r}
+naive.lm <- lm(log(area + 1) ~ 1, fires)
+summary(naive.lm)
+```
+The `summary()` extractor gives us some insight on this model. First of all we can see some points of the residuals distribution. The residual vector is $e = Y - \hat{Y}$ and measures the deviation of the predictions from the ground-truth values.
+Then it shows us that the value of the estimated parameter $\hat{\beta_0}$ (the intercept) is $1.1110$, which is, as mentioned before, the sample mean of all the area values (in the log space). We can quickly check it:
+```{r}
+near(naive.lm$coefficients[[1]], mean(log(1 + fires$area)))
+```
+The standard error is computed as $SE(\hat{\beta_i}) = \hat{\sigma}\sqrt{(X'X)^{-1}_{i+1,i+1}}$ where $\hat{\sigma}$ is the residual standard error (in R, `sd(naive.lm$residuals)`, also shown at the bottom of the summary output). It allows us to construct confidence intervals on the true parameter $\beta_i$, but this holds only if we can assume that $\beta$ is normally distributed.
+Having this in mind, we can easily compute 95% confidence interval, obtaining the following.
+```{r}
+confint(naive.lm)
+```
+Finally, the t-value is the ratio $\hat{\beta_i}/SE(\hat{\beta_i})$ and, along with the corresponding p-value, represent the outcome of an hypothesis test where we want to know if we can reject the null hypothesis $H_0: \beta_i=0$ in favor of the alternative hypothesis $H_1: \beta_i \neq 0$. Therefore a large p-value would tell us that, being the true value $\beta_i$ equal to $0$ with a given confidence level, the $i^th$ predictor has no effect on the response variable, and, presumably, we should drop it from the model. Of course, in this trivial example (null model) we have no reason to speculate on the confidence intervals being the intercept the only parameter considered.
+
+On the opposite side of the null model, we can consider the complete model in which we use all the provided attributes.
+
+```{r}
+complete.lm <- lm(log(area + 1) ~ ., fires)
+complete.lm$call
+```
+We omit the summary of this model since it will display too many coefficients all at once and, moreover, it could be very difficult to interpret.
+
+Beware that when using all the predictors, the `lm()` call is implicitly performing some operations not explained before. This time, since we also have qualitative predictors such as month, day, location etc., the number of parameters to be estimated is different: the factors are split into separate dummy variables which account for the presence of a certain level. However the number of coefficients to be estimated for each factor is equal to the number of levels _minus one_ since otherwise the columns related to that factor would be linearly dependent and, as a consequence, the $X'X$ matrix would not be invertible. To make an example, the following are the coefficients estimated by the complete model related to the factor _day_. Monday, the first level, is used as reference.
+```{r}
+complete.lm$coefficients[grepl("day", names(coef(complete.lm)))]
+```
+
 
 ### Metrics
-The term mean squared error is sometimes used to refer to the unbiased estimate of error variance: the residual sum of squares divided by the number of degrees of freedom. This definition for a known, computed quantity differs from the above definition for the computed MSE of a predictor in that a different denominator is used. The denominator is the sample size reduced by the number of model parameters estimated from the same data, (n-p) for p regressors or (n-p-1) if an intercept is used.[4] For more details, see errors and residuals in statistics. Although the MSE (as defined in the present article) is not an unbiased estimator of the error variance, it is consistent, given the consistency of the predictor.
+Before generating other models, we define two metrics based on which we will compare the models.
+The first one is the _root mean squared error_ (RMSE).
+
+$$RMSE = \sqrt{MSE} = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y}_i)^2}$$
+Notice that, although sometimes the term mean squared error is used to refer to the unbiased estimate of error variance, for this work we consider the biased, yet consistent version just defined. They only differ in the denominator: instead of the cardinality of the observations, the residual sum of squares (RSS) is divided by the number of degrees of freedom, which is $n-p$ with $p$ being the number of estimated parameters.
+
+```{r}
+# notice, MSE is implemented with exact mean and not sum/(n-p)
+mse <- function(predicted, actual) {
+  mse <- mean((actual - predicted) ^ 2)
+  return(mse)
+}
+
+rmse <- function(predicted, actual) {
+  mse <- mse(predicted, actual)
+  rmse <- sqrt(mse)
+  return(rmse)
+}
+```
+
+The second metric considered is the _mean absolute deviation_ (MAD), defined as follows:
+$$MAD = \frac{1}{n}\sum_{i=1}^{n}|y_i - \hat{y}_i|$$
+```{r}
+mad <- function(predicted, actual) {
+  mad <- mean(abs(actual - predicted))
+  return(mad)
+}
+```
+
+In both metrics, lower values result in better predictive models. However, the RMSE is more sensitive to high residuals.
+
+In the examples above, null and complete models, the computation of these metrics gives us the following results:
+
+```{r}
+naive.predicted <- exp(predict(naive.lm, fires, type = "response")) - 1
+cat("Null model\n")
+paste("RMSE:", round(rmse(naive.predicted, fires$area), digits = 2))
+paste("MAD:", round(mad(naive.predicted, fires$area), digits = 2))
+
+complete.predicted <- exp(predict(complete.lm, fires, type = "response")) - 1
+complete.predicted[complete.predicted < 0] <- 0.
+cat("Complete model\n")
+paste("RMSE:", round(rmse(complete.predicted, fires$area), digits = 2))
+paste("MAD:", round(mad(complete.predicted, fires$area), digits = 2))
+```
+This can be kept as a benchmark result for comparison with other models.
+
+### Feature selection
+
+
+### Residual plots
+(normality of residuals, confidence intervals for RMSE and bootstrap for ci for RMSE)
+## Two-part model
 
 ## Random Forest
-
-## Support Vector Machine
 
 # Conclusion
 Many ways to improve the accuracy of the model, but focus on feature selection and links between predictors and response.
