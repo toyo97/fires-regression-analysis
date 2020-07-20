@@ -149,13 +149,13 @@ summary(fires.bin)
 fires.ab <- fires %>%
   filter(area > 0)
 
-m.bin.glm <- glm(area.gt0 ~ temp + RH + wind + rain, family = "binomial", data = fires.bin)
+m.bin.glm <- glm(area.gt0 ~ temp + RH + wind + rain, family = binomial(link = "logit"), data = fires.bin)
 summary(m.bin.glm)
 
 m.ab.lm <- lm(log(area +1) ~ temp + RH + wind + rain, data = fires.ab)
 summary(m.ab.lm)
 
-fwi.bin.glm <- glm(area.gt0 ~ FFMC + DMC + DC + ISI, family = "binomial", fires.bin)
+fwi.bin.glm <- glm(area.gt0 ~ FFMC + DMC + DC + ISI, family = binomial(link = "logit"), fires.bin)
 summary(fwi.bin.glm)
 
 fwi.ab.lm <- lm(log(area +1) ~ FFMC + DMC + DC + ISI, fires.ab)

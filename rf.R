@@ -38,7 +38,7 @@ m.cols <- c("temp", "RH", "wind", "rain")
 # set up the task using log_area as target variable
 task <- TaskRegr$new(id = "fires", backend = fires[, -12], target = "log_area")
 
-rf <- lrn("regr.ranger", num.trees = 500, mtry = 4, splitrule = "variance", max.depth = 5) # default parameters (T=500, mtry=auto, split)
+rf <- lrn("regr.ranger", num.trees = 500, mtry = 4, splitrule = "variance", max.depth = 20) # default parameters (T=500, mtry=auto, split)
 rf$train(task)
 rf.log.pred <- rf$predict(task)
 autoplot(rf.log.pred)
@@ -49,7 +49,7 @@ rf.pred[rf.pred < 0] <- 0.
 paste("RMSE:", round(rmse(rf.pred, fires$area), digits = 2))
 paste("MAD:", round(mad(rf.pred, fires$area), digits = 2))
 
-train_set = sample(task$nrow, 0.8 * task$nrow)
+train_set = sample(task$nrow, 0.6 * task$nrow)
 test_set = setdiff(seq_len(task$nrow), train_set)
 
 rf$train(task, row_ids = train_set)
